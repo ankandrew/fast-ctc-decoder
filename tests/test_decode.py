@@ -171,7 +171,7 @@ class Test1DBeamSearch(TestCase):
         self.assertEqual(path, expected_path)
 
     def test_beam_search_all_returns_multiple(self):
-        """beam_search_all returns up to beam_size candidates with scores"""
+        """beam_search_all returns up to beam_size candidates with real probabilities"""
         results = beam_search_all(self.probs, self.alphabet,
                                   self.beam_size, self.beam_cut_threshold)
         self.assertIsInstance(results, list)
@@ -180,19 +180,35 @@ class Test1DBeamSearch(TestCase):
 
         for entry in results:
             self.assertEqual(len(entry), 3)
-            seq, path, score = entry
+            seq, path, prob = entry
             self.assertIsInstance(seq, str)
             self.assertEqual(len(seq), len(path))
-            self.assertIsInstance(score, float)
+            self.assertIsInstance(prob, float)
+            # real probabilities, in (0, 1]
+            self.assertGreater(prob, 0.0)
+            self.assertLessEqual(prob, 1.0 + 1e-5)
 
-        # top score is normalised to 1.0
-        self.assertAlmostEqual(results[0][2], 1.0, places=5)
-        # scores are sorted descending
-        scores = [s for _, _, s in results]
-        self.assertEqual(scores, sorted(scores, reverse=True))
+        # probabilities are sorted descending
+        probs = [p for _, _, p in results]
+        self.assertEqual(probs, sorted(probs, reverse=True))
+        # sum of disjoint top-N labellings cannot exceed 1
+        self.assertLessEqual(sum(probs), 1.0 + 1e-5)
         # all sequences distinct
         seqs = [s for s, _, _ in results]
         self.assertEqual(len(seqs), len(set(seqs)))
+
+    def test_beam_search_all_known_probability(self):
+        """For a near-deterministic input, top probability should be close to 1."""
+        x = np.array([
+            [0.01, 0.98, 0.01],
+            [0.99, 0.005, 0.005],
+            [0.01, 0.01, 0.98],
+            [0.99, 0.005, 0.005],
+        ], dtype=np.float32)
+        results = beam_search_all(x, "NAB", 5, 0.0)
+        self.assertEqual(results[0][0], "AB")
+        self.assertGreater(results[0][2], 0.9)
+        self.assertLessEqual(results[0][2], 1.0 + 1e-5)
 
     def test_beam_search_all_top_matches_single(self):
         """beam_search_all top result equals beam_search result"""

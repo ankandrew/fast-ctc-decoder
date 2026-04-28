@@ -3,6 +3,28 @@ use crate::tree::{SuffixTree, ROOT_NODE};
 use ndarray::{ArrayBase, Axis, Data, FoldWhile, Ix1, Ix2, Ix3, Zip};
 use ndarray_stats::QuantileExt;
 
+/// log(exp(a) + exp(b)) computed in a numerically stable way.
+fn logsumexp(a: f32, b: f32) -> f32 {
+    if a == f32::NEG_INFINITY {
+        return b;
+    }
+    if b == f32::NEG_INFINITY {
+        return a;
+    }
+    let m = if a > b { a } else { b };
+    m + ((a - m).exp() + (b - m).exp()).ln()
+}
+
+/// log(p) with log(0) handled as -infinity (stdlib gives -inf already, but be explicit
+/// for negative or NaN inputs which can otherwise produce NaN).
+fn safe_ln(p: f32) -> f32 {
+    if p > 0.0 {
+        p.ln()
+    } else {
+        f32::NEG_INFINITY
+    }
+}
+
 /// A node in the labelling tree to build from.
 #[derive(Clone, Copy, Debug)]
 struct SearchPoint {
@@ -10,20 +32,21 @@ struct SearchPoint {
     node: i32,
     /// The transition state for crf.
     state: usize,
-    /// The cumulative probability of the labelling so far for paths without any leading blank
-    /// labels.
-    label_prob: f32,
-    /// The cumulative probability of the labelling so far for paths with one or more leading
+    /// The cumulative log-probability of the labelling so far for paths without any leading
     /// blank labels.
-    gap_prob: f32,
+    log_label_prob: f32,
+    /// The cumulative log-probability of the labelling so far for paths with one or more
+    /// leading blank labels.
+    log_gap_prob: f32,
 }
 
 impl SearchPoint {
-    /// The total probability of the labelling so far.
+    /// The total log-probability of the labelling so far.
     ///
-    /// This sums the probabilities of the paths with and without leading blank labels.
-    fn probability(&self) -> f32 {
-        self.label_prob + self.gap_prob
+    /// This sums the probabilities of the paths with and without leading blank labels (in
+    /// log space, that's logsumexp).
+    fn log_probability(&self) -> f32 {
+        logsumexp(self.log_label_prob, self.log_gap_prob)
     }
 }
 
@@ -53,8 +76,8 @@ pub fn crf_beam_search_all<D: Data<Elem = f32>>(
     let mut suffix_tree = SuffixTree::new(n_base);
     let mut beam = vec![SearchPoint {
         node: ROOT_NODE,
-        label_prob: *init_state.max().unwrap(),
-        gap_prob: init_state[0],
+        log_label_prob: safe_ln(*init_state.max().unwrap()),
+        log_gap_prob: safe_ln(init_state[0]),
         state: init_state.argmax().unwrap(),
     }];
     let mut next_beam = Vec::new();
@@ -65,24 +88,24 @@ pub fn crf_beam_search_all<D: Data<Elem = f32>>(
         for &SearchPoint {
             node,
             state,
-            label_prob,
-            gap_prob,
+            log_label_prob,
+            log_gap_prob,
         } in &beam
         {
             let pr = probs.slice(s![state, ..]);
 
             // add N to beam
-            if pr[0] > beam_cut_threshold {
+            if pr[0] > beam_cut_threshold && pr[0] > 0.0 {
                 next_beam.push(SearchPoint {
                     node: node,
                     state: state,
-                    label_prob: 0.0,
-                    gap_prob: (label_prob + gap_prob) * pr[0],
+                    log_label_prob: f32::NEG_INFINITY,
+                    log_gap_prob: logsumexp(log_label_prob, log_gap_prob) + pr[0].ln(),
                 });
             }
 
             for (label, &pr_b) in pr.iter().skip(1).enumerate() {
-                if pr_b < beam_cut_threshold {
+                if pr_b < beam_cut_threshold || pr_b <= 0.0 {
                     continue;
                 }
 
@@ -92,8 +115,8 @@ pub fn crf_beam_search_all<D: Data<Elem = f32>>(
 
                 next_beam.push(SearchPoint {
                     node: new_node_idx,
-                    gap_prob: 0.0,
-                    label_prob: (label_prob + gap_prob) * pr_b,
+                    log_gap_prob: f32::NEG_INFINITY,
+                    log_label_prob: logsumexp(log_label_prob, log_gap_prob) + pr_b.ln(),
                     state: (state * n_base) % n_state + (label),
                 });
             }
@@ -108,8 +131,10 @@ pub fn crf_beam_search_all<D: Data<Elem = f32>>(
         for i in 0..beam.len() {
             let beam_item = beam[i];
             if beam_item.node == last_key {
-                beam[last_key_pos].label_prob += beam_item.label_prob;
-                beam[last_key_pos].gap_prob += beam_item.gap_prob;
+                beam[last_key_pos].log_label_prob =
+                    logsumexp(beam[last_key_pos].log_label_prob, beam_item.log_label_prob);
+                beam[last_key_pos].log_gap_prob =
+                    logsumexp(beam[last_key_pos].log_gap_prob, beam_item.log_gap_prob);
                 beam[i].node = DELETE_MARKER;
             } else {
                 last_key_pos = i;
@@ -120,8 +145,8 @@ pub fn crf_beam_search_all<D: Data<Elem = f32>>(
         beam.retain(|x| x.node != DELETE_MARKER);
         let mut has_nans = false;
         beam.sort_unstable_by(|a, b| {
-            (b.probability())
-                .partial_cmp(&(a.probability()))
+            (b.log_probability())
+                .partial_cmp(&(a.log_probability()))
                 .unwrap_or_else(|| {
                     has_nans = true;
                     std::cmp::Ordering::Equal // don't really care
@@ -135,11 +160,8 @@ pub fn crf_beam_search_all<D: Data<Elem = f32>>(
             // we've run out of beam (probably the threshold is too high)
             return Err(SearchError::RanOutOfBeam);
         }
-        let top = beam[0].probability();
-        for x in &mut beam {
-            x.label_prob /= top;
-            x.gap_prob /= top;
-        }
+        // No normalisation needed: log-space arithmetic does not underflow for
+        // realistic sequence lengths.
     }
 
     let mut results = Vec::with_capacity(beam.len());
@@ -156,7 +178,7 @@ pub fn crf_beam_search_all<D: Data<Elem = f32>>(
         results.push((
             sequence.chars().rev().collect::<String>(),
             path,
-            sp.probability(),
+            sp.log_probability().exp(),
         ));
     }
     Ok(results)
@@ -194,8 +216,8 @@ pub fn beam_search_all<D: Data<Elem = f32>>(
     let mut beam = vec![SearchPoint {
         node: ROOT_NODE,
         state: 0,
-        gap_prob: 1.0,
-        label_prob: 0.0,
+        log_gap_prob: 0.0, // log(1.0)
+        log_label_prob: f32::NEG_INFINITY, // log(0.0)
     }];
     let mut next_beam = Vec::new();
 
@@ -204,37 +226,38 @@ pub fn beam_search_all<D: Data<Elem = f32>>(
 
         for &SearchPoint {
             node,
-            label_prob,
-            gap_prob,
+            log_label_prob,
+            log_gap_prob,
             state,
         } in &beam
         {
             let tip_label = suffix_tree.label(node);
 
             // add N to beam
-            if pr[0] > beam_cut_threshold {
+            if pr[0] > beam_cut_threshold && pr[0] > 0.0 {
                 next_beam.push(SearchPoint {
                     node: node,
                     state: state,
-                    label_prob: 0.0,
-                    gap_prob: (label_prob + gap_prob) * pr[0],
+                    log_label_prob: f32::NEG_INFINITY,
+                    log_gap_prob: logsumexp(log_label_prob, log_gap_prob) + pr[0].ln(),
                 });
             }
 
             for (label, &pr_b) in pr.iter().skip(1).enumerate() {
-                if pr_b < beam_cut_threshold {
+                if pr_b < beam_cut_threshold || pr_b <= 0.0 {
                     continue;
                 }
+                let log_pr_b = pr_b.ln();
 
                 if collapse_repeats && Some(label) == tip_label {
                     next_beam.push(SearchPoint {
                         node: node,
-                        label_prob: label_prob * pr_b,
-                        gap_prob: 0.0,
+                        log_label_prob: log_label_prob + log_pr_b,
+                        log_gap_prob: f32::NEG_INFINITY,
                         state: state,
                     });
                     let new_node_idx = suffix_tree.get_child(node, label).or_else(|| {
-                        if gap_prob > 0.0 {
+                        if log_gap_prob > f32::NEG_INFINITY {
                             Some(suffix_tree.add_node(node, label, idx))
                         } else {
                             None
@@ -245,8 +268,8 @@ pub fn beam_search_all<D: Data<Elem = f32>>(
                         next_beam.push(SearchPoint {
                             node: idx,
                             state: state,
-                            label_prob: gap_prob * pr_b,
-                            gap_prob: 0.0,
+                            log_label_prob: log_gap_prob + log_pr_b,
+                            log_gap_prob: f32::NEG_INFINITY,
                         });
                     }
                 } else {
@@ -257,8 +280,8 @@ pub fn beam_search_all<D: Data<Elem = f32>>(
                     next_beam.push(SearchPoint {
                         node: new_node_idx,
                         state: state,
-                        label_prob: (label_prob + gap_prob) * pr_b,
-                        gap_prob: 0.0,
+                        log_label_prob: logsumexp(log_label_prob, log_gap_prob) + log_pr_b,
+                        log_gap_prob: f32::NEG_INFINITY,
                     });
                 }
             }
@@ -272,8 +295,10 @@ pub fn beam_search_all<D: Data<Elem = f32>>(
         for i in 0..beam.len() {
             let beam_item = beam[i];
             if beam_item.node == last_key {
-                beam[last_key_pos].label_prob += beam_item.label_prob;
-                beam[last_key_pos].gap_prob += beam_item.gap_prob;
+                beam[last_key_pos].log_label_prob =
+                    logsumexp(beam[last_key_pos].log_label_prob, beam_item.log_label_prob);
+                beam[last_key_pos].log_gap_prob =
+                    logsumexp(beam[last_key_pos].log_gap_prob, beam_item.log_gap_prob);
                 beam[i].node = DELETE_MARKER;
             } else {
                 last_key_pos = i;
@@ -284,8 +309,8 @@ pub fn beam_search_all<D: Data<Elem = f32>>(
         beam.retain(|x| x.node != DELETE_MARKER);
         let mut has_nans = false;
         beam.sort_unstable_by(|a, b| {
-            (b.probability())
-                .partial_cmp(&(a.probability()))
+            (b.log_probability())
+                .partial_cmp(&(a.log_probability()))
                 .unwrap_or_else(|| {
                     has_nans = true;
                     std::cmp::Ordering::Equal // don't really care
@@ -299,11 +324,8 @@ pub fn beam_search_all<D: Data<Elem = f32>>(
             // we've run out of beam (probably the threshold is too high)
             return Err(SearchError::RanOutOfBeam);
         }
-        let top = beam[0].probability();
-        for x in &mut beam {
-            x.label_prob /= top;
-            x.gap_prob /= top;
-        }
+        // No normalisation needed: log-space arithmetic does not underflow for
+        // realistic sequence lengths.
     }
 
     let mut results = Vec::with_capacity(beam.len());
@@ -318,7 +340,7 @@ pub fn beam_search_all<D: Data<Elem = f32>>(
         }
         path.reverse();
         tokens.reverse();
-        results.push((tokens.concat(), path, sp.probability()));
+        results.push((tokens.concat(), path, sp.log_probability().exp()));
     }
     Ok(results)
 }
@@ -672,13 +694,19 @@ mod tests {
         assert!(!results.is_empty());
         assert!(results.len() <= beam_size);
 
-        // top candidate has score 1.0 (relative-to-top normalisation)
-        assert!((results[0].2 - 1.0).abs() < 1e-5);
+        // each probability is a real probability in (0, 1]
+        for (_, _, p) in &results {
+            assert!(*p > 0.0 && *p <= 1.0, "prob out of range: {}", p);
+        }
 
-        // results should be sorted by score descending
+        // results should be sorted by probability descending
         for w in results.windows(2) {
             assert!(w[0].2 >= w[1].2);
         }
+
+        // sum over the kept beam cannot exceed 1 (it's a partial sum over disjoint labellings)
+        let total: f32 = results.iter().map(|(_, _, p)| *p).sum();
+        assert!(total <= 1.0 + 1e-5, "beam total exceeds 1: {}", total);
 
         // all returned sequences should be distinct (the merge step deduplicates by labelling)
         let seqs: Vec<&String> = results.iter().map(|(s, _, _)| s).collect();
@@ -686,6 +714,38 @@ mod tests {
         unique.sort();
         unique.dedup();
         assert_eq!(seqs.len(), unique.len());
+    }
+
+    #[test]
+    fn test_beam_search_all_known_probabilities() {
+        // Network where there is essentially one valid labelling: "AB", with very high
+        // confidence at each emission. The top candidate's probability should be close to 1.
+        let alphabet = vec![String::from("N"), String::from("A"), String::from("B")];
+        let network_output = array![
+            [0.01f32, 0.98, 0.01], // strongly A
+            [0.99f32, 0.005, 0.005], // strongly blank
+            [0.01f32, 0.01, 0.98], // strongly B
+            [0.99f32, 0.005, 0.005], // strongly blank
+        ];
+
+        let results = beam_search_all(&network_output, &alphabet, 5, 0.0, true).unwrap();
+        assert_eq!(results[0].0, "AB");
+        // Best path probability is roughly 0.98 * 0.99 * 0.98 * 0.99 ≈ 0.94. Allow a margin
+        // because additional paths through merged states contribute too.
+        assert!(results[0].2 > 0.9, "top prob should be high, got {}", results[0].2);
+        assert!(results[0].2 <= 1.0);
+    }
+
+    #[test]
+    fn test_logsumexp() {
+        // basic identity: logsumexp(log a, log b) == log(a + b)
+        let lse = logsumexp(0.5f32.ln(), 0.25f32.ln());
+        assert!((lse - 0.75f32.ln()).abs() < 1e-5);
+
+        // -inf is the identity element
+        assert_eq!(logsumexp(f32::NEG_INFINITY, 1.5), 1.5);
+        assert_eq!(logsumexp(1.5, f32::NEG_INFINITY), 1.5);
+        assert_eq!(logsumexp(f32::NEG_INFINITY, f32::NEG_INFINITY), f32::NEG_INFINITY);
     }
 
     /*
