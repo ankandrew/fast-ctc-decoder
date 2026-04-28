@@ -35,13 +35,13 @@ pub fn phred(prob: f32, qscale: f32, qbias: f32) -> char {
     std::char::from_u32(q.round() as u32 + 33).unwrap()
 }
 
-pub fn crf_beam_search<D: Data<Elem = f32>>(
+pub fn crf_beam_search_all<D: Data<Elem = f32>>(
     network_output: &ArrayBase<D, Ix3>,
     init_state: &ArrayBase<D, Ix1>,
     alphabet: &[String],
     beam_size: usize,
     beam_cut_threshold: f32,
-) -> Result<(String, Vec<usize>), SearchError> {
+) -> Result<Vec<(String, Vec<usize>, f32)>, SearchError> {
     assert!(!alphabet.is_empty());
     assert!(!network_output.is_empty());
     assert_eq!(network_output.ndim(), 3);
@@ -142,27 +142,51 @@ pub fn crf_beam_search<D: Data<Elem = f32>>(
         }
     }
 
-    let mut path = Vec::new();
-    let mut sequence = String::new();
-
-    if beam[0].node != ROOT_NODE {
-        for (label, &time) in suffix_tree.iter_from(beam[0].node) {
-            path.push(time);
-            sequence.push_str(&alphabet[label + 1]);
+    let mut results = Vec::with_capacity(beam.len());
+    for sp in &beam {
+        let mut path = Vec::new();
+        let mut sequence = String::new();
+        if sp.node != ROOT_NODE {
+            for (label, &time) in suffix_tree.iter_from(sp.node) {
+                path.push(time);
+                sequence.push_str(&alphabet[label + 1]);
+            }
         }
+        path.reverse();
+        results.push((
+            sequence.chars().rev().collect::<String>(),
+            path,
+            sp.probability(),
+        ));
     }
-
-    path.reverse();
-    Ok((sequence.chars().rev().collect::<String>(), path))
+    Ok(results)
 }
 
-pub fn beam_search<D: Data<Elem = f32>>(
+pub fn crf_beam_search<D: Data<Elem = f32>>(
+    network_output: &ArrayBase<D, Ix3>,
+    init_state: &ArrayBase<D, Ix1>,
+    alphabet: &[String],
+    beam_size: usize,
+    beam_cut_threshold: f32,
+) -> Result<(String, Vec<usize>), SearchError> {
+    let mut results = crf_beam_search_all(
+        network_output,
+        init_state,
+        alphabet,
+        beam_size,
+        beam_cut_threshold,
+    )?;
+    let (seq, path, _) = results.swap_remove(0);
+    Ok((seq, path))
+}
+
+pub fn beam_search_all<D: Data<Elem = f32>>(
     network_output: &ArrayBase<D, Ix2>,
     alphabet: &[String],
     beam_size: usize,
     beam_cut_threshold: f32,
     collapse_repeats: bool,
-) -> Result<(String, Vec<usize>), SearchError> {
+) -> Result<Vec<(String, Vec<usize>, f32)>, SearchError> {
     // alphabet size minus the blank label
     let alphabet_size = alphabet.len() - 1;
 
@@ -282,22 +306,39 @@ pub fn beam_search<D: Data<Elem = f32>>(
         }
     }
 
-    let mut path = Vec::new();
-    let mut tokens: Vec<&str> = Vec::new();
-
-    if beam[0].node != ROOT_NODE {
-        for (label, &time) in suffix_tree.iter_from(beam[0].node) {
-            path.push(time);
-            tokens.push(&alphabet[label + 1]);
+    let mut results = Vec::with_capacity(beam.len());
+    for sp in &beam {
+        let mut path = Vec::new();
+        let mut tokens: Vec<&str> = Vec::new();
+        if sp.node != ROOT_NODE {
+            for (label, &time) in suffix_tree.iter_from(sp.node) {
+                path.push(time);
+                tokens.push(&alphabet[label + 1]);
+            }
         }
+        path.reverse();
+        tokens.reverse();
+        results.push((tokens.concat(), path, sp.probability()));
     }
+    Ok(results)
+}
 
-    path.reverse();
-    tokens.reverse();
-
-    let sequence = tokens.concat();
-
-    Ok((sequence, path))
+pub fn beam_search<D: Data<Elem = f32>>(
+    network_output: &ArrayBase<D, Ix2>,
+    alphabet: &[String],
+    beam_size: usize,
+    beam_cut_threshold: f32,
+    collapse_repeats: bool,
+) -> Result<(String, Vec<usize>), SearchError> {
+    let mut results = beam_search_all(
+        network_output,
+        alphabet,
+        beam_size,
+        beam_cut_threshold,
+        collapse_repeats,
+    )?;
+    let (seq, path, _) = results.swap_remove(0);
+    Ok((seq, path))
 }
 
 fn find_max(
@@ -598,6 +639,53 @@ mod tests {
 
         let (seq, _starts) = beam_search(&network_output, &alphabet, 5, 0.0, false).unwrap();
         assert_eq!(seq, "GGGAGAG");
+    }
+
+    #[test]
+    fn test_beam_search_all() {
+        let alphabet = vec![String::from("N"), String::from("A"), String::from("G")];
+        let network_output = array![
+            [0.6f32, 0.2, 0.2], // N
+            [0.6f32, 0.2, 0.2], // N
+            [0.0f32, 0.4, 0.6], // G
+            [0.0f32, 0.3, 0.7], // G
+            [0.3f32, 0.3, 0.4], // G
+            [0.4f32, 0.3, 0.3], // N
+            [0.4f32, 0.3, 0.3], // N
+            [0.3f32, 0.3, 0.4], // G
+            [0.1f32, 0.4, 0.5], // G
+            [0.1f32, 0.5, 0.4], // A
+            [0.8f32, 0.1, 0.1], // N
+            [0.1f32, 0.1, 0.8], // G
+            [0.4f32, 0.3, 0.3], // N
+        ];
+
+        let beam_size = 5;
+        let results = beam_search_all(&network_output, &alphabet, beam_size, 0.0, true).unwrap();
+
+        // top result must match the single-result API
+        let (top_seq, top_path) = beam_search(&network_output, &alphabet, beam_size, 0.0, true).unwrap();
+        assert_eq!(results[0].0, top_seq);
+        assert_eq!(results[0].1, top_path);
+
+        // we should get up to beam_size candidates
+        assert!(!results.is_empty());
+        assert!(results.len() <= beam_size);
+
+        // top candidate has score 1.0 (relative-to-top normalisation)
+        assert!((results[0].2 - 1.0).abs() < 1e-5);
+
+        // results should be sorted by score descending
+        for w in results.windows(2) {
+            assert!(w[0].2 >= w[1].2);
+        }
+
+        // all returned sequences should be distinct (the merge step deduplicates by labelling)
+        let seqs: Vec<&String> = results.iter().map(|(s, _, _)| s).collect();
+        let mut unique = seqs.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(seqs.len(), unique.len());
     }
 
     /*
