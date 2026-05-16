@@ -285,48 +285,6 @@ fn crf_beam_search(
     }
 }
 
-/// Like `crf_beam_search`, but returns every candidate kept in the beam.
-///
-/// Returns:
-///     list of tuple of (str, numpy.ndarray, float): for each surviving beam
-///         entry, the decoded sequence, the array of label end-times, and a
-///         relative score (1.0 for the top candidate, fractions for the rest).
-#[cfg(feature = "python")]
-#[pyfunction(beam_size = "5", beam_cut_threshold = "0.0")]
-#[pyo3(text_signature = "(network_output, init_state, alphabet, beam_size, beam_cut_threshold)")]
-fn crf_beam_search_all(
-    py: Python,
-    network_output: &PyArray3<f32>,
-    init_state: &PyArray1<f32>,
-    alphabet: &PySequence,
-    beam_size: usize,
-    beam_cut_threshold: f32,
-) -> PyResult<Vec<(String, Vec<usize>, f32)>> {
-    let alphabet = seq_to_vec(alphabet)?;
-    if alphabet.is_empty() {
-        Err(PyValueError::new_err("Empty alphabet given"))
-    } else if network_output.shape()[2] != alphabet.len() {
-        Err(PyValueError::new_err(
-            "alphabet size does not match probability matrix dimensions",
-        ))
-    } else {
-        unsafe {
-            let network_output = network_output.as_array();
-            let init_state = init_state.as_array();
-            py.allow_threads(|| {
-                search::crf_beam_search_all(
-                    &network_output,
-                    &init_state,
-                    &alphabet,
-                    beam_size,
-                    beam_cut_threshold,
-                )
-            })
-        }
-        .map_err(|e| PyRuntimeError::new_err(format!("{}", e)))
-    }
-}
-
 /// Perform a CTC beam search decode on an RNN output.
 ///
 /// This function does a beam search variant of the prefix search decoding mentioned (and described
@@ -394,76 +352,6 @@ fn beam_search(
             let network_output = network_output.as_array();
             py.allow_threads(|| {
                 search::beam_search(
-                    &network_output,
-                    &alphabet,
-                    beam_size,
-                    beam_cut_threshold,
-                    collapse_repeats,
-                )
-            })
-        }
-        .map_err(|e| PyRuntimeError::new_err(format!("{}", e)))
-    }
-}
-
-/// Like `beam_search`, but returns every candidate kept in the beam.
-///
-/// This runs the same search as `beam_search`, but instead of returning only
-/// the highest-scoring labelling, it returns one entry per surviving beam
-/// candidate (up to `beam_size` of them, ordered best first).
-///
-/// The scores are relative to the top candidate: the best one is 1.0, others
-/// are fractions of it. They are not full probabilities of each labelling
-/// (the search renormalises at every step to avoid underflow).
-///
-/// Args:
-///     See `beam_search` for the meaning of each argument.
-///
-/// Returns:
-///     list of tuple of (str, numpy.ndarray, float): for each surviving beam
-///         entry, the decoded sequence, the array of final timepoints of each
-///         label (as indices into the outer axis of `network_output`), and a
-///         relative score (1.0 for the top candidate, fractions for the rest).
-///
-/// Raises:
-///     PyValueError: The constraints on the arguments have not been met.
-#[cfg(feature = "python")]
-#[pyfunction(beam_size = "5", beam_cut_threshold = "0.0", collapse_repeats = true)]
-#[pyo3(
-    text_signature = "(network_output, alphabet, beam_size=5, beam_cut_threshold=0.0, collapse_repeats=True)"
-)]
-fn beam_search_all(
-    py: Python,
-    network_output: &PyArray2<f32>,
-    alphabet: &PySequence,
-    beam_size: usize,
-    beam_cut_threshold: f32,
-    collapse_repeats: bool,
-) -> PyResult<Vec<(String, Vec<usize>, f32)>> {
-    let alphabet = seq_to_vec(alphabet)?;
-    let max_beam_cut = 1.0 / (alphabet.len() as f32);
-    if alphabet.len() != network_output.shape()[1] {
-        Err(PyValueError::new_err(format!(
-            "alphabet size {} does not match probability matrix inner dimension {}",
-            alphabet.len(),
-            network_output.shape()[1]
-        )))
-    } else if beam_size == 0 {
-        Err(PyValueError::new_err("beam_size cannot be 0"))
-    } else if beam_cut_threshold < -0.0 {
-        Err(PyValueError::new_err(
-            "beam_cut_threshold must be at least 0.0",
-        ))
-    } else if beam_cut_threshold >= max_beam_cut {
-        Err(PyValueError::new_err(format!(
-            "beam_cut_threshold cannot be more than {}",
-            max_beam_cut
-        )))
-    } else {
-        unsafe {
-            let network_output = network_output.as_array();
-            py.allow_threads(|| {
-                search::beam_search_all(
                     &network_output,
                     &alphabet,
                     beam_size,
@@ -730,12 +618,10 @@ fn crf_beam_search_duplex(
 #[pymodule]
 fn fast_ctc_decode(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(beam_search))?;
-    m.add_wrapped(wrap_pyfunction!(beam_search_all))?;
     m.add_wrapped(wrap_pyfunction!(beam_search_duplex))?;
     m.add_wrapped(wrap_pyfunction!(viterbi_search))?;
     m.add_wrapped(wrap_pyfunction!(crf_greedy_search))?;
     m.add_wrapped(wrap_pyfunction!(crf_beam_search))?;
-    m.add_wrapped(wrap_pyfunction!(crf_beam_search_all))?;
     m.add_wrapped(wrap_pyfunction!(crf_beam_search_duplex))?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())

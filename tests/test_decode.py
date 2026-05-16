@@ -170,44 +170,6 @@ class Test1DBeamSearch(TestCase):
         self.assertEqual(seq, 'AAACCCGGG')
         self.assertEqual(path, expected_path)
 
-    def test_beam_search_all_returns_multiple(self):
-        """beam_search_all returns up to beam_size candidates with scores"""
-        results = beam_search_all(self.probs, self.alphabet,
-                                  self.beam_size, self.beam_cut_threshold)
-        self.assertIsInstance(results, list)
-        self.assertGreaterEqual(len(results), 1)
-        self.assertLessEqual(len(results), self.beam_size)
-
-        for entry in results:
-            self.assertEqual(len(entry), 3)
-            seq, path, score = entry
-            self.assertIsInstance(seq, str)
-            self.assertEqual(len(seq), len(path))
-            self.assertIsInstance(score, float)
-
-        # top score is normalised to 1.0
-        self.assertAlmostEqual(results[0][2], 1.0, places=5)
-        # scores are sorted descending
-        scores = [s for _, _, s in results]
-        self.assertEqual(scores, sorted(scores, reverse=True))
-        # all sequences distinct
-        seqs = [s for s, _, _ in results]
-        self.assertEqual(len(seqs), len(set(seqs)))
-
-    def test_beam_search_all_top_matches_single(self):
-        """beam_search_all top result equals beam_search result"""
-        seq, path = beam_search(self.probs, self.alphabet,
-                                self.beam_size, self.beam_cut_threshold)
-        results = beam_search_all(self.probs, self.alphabet,
-                                  self.beam_size, self.beam_cut_threshold)
-        self.assertEqual(seq, results[0][0])
-        self.assertEqual(path, results[0][1])
-
-    def test_beam_search_all_validates_beam_size(self):
-        """beam_search_all rejects beam_size = 0"""
-        with self.assertRaises(ValueError):
-            beam_search_all(self.probs, self.alphabet, 0, self.beam_cut_threshold)
-
     def test_repeat_sequence_path_with_spread_probs(self):
         """ simple beam search path test with a repeated sequence with probabilities spread"""
         w = 20
