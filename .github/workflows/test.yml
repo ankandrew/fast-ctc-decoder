@@ -17,8 +17,5 @@ jobs:
           python-version: '3.12'
       - name: Python unit tests
         run: |
-          python3 -m venv venv3
-          source venv3/bin/activate
-          python3 -m pip install maturin numpy
-          maturin develop -F python 
+          python3 -m pip install numpy .
           python3 tests/test_decode.py
