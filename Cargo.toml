@@ -1,11 +1,11 @@
 [package]
-name = "fast_ctc_decode"
+name = "fast_ctc_decoder"
 version = "0.3.7"
-authors = ["Vlado Boza <bozavlado@gmail.com>", "Chris Seymour <chris.seymour@nanoporetech.com>", "Jabari Holder <jholder@and.digital>"]
+authors = ["Vlado Boza <bozavlado@gmail.com>", "Chris Seymour <chris.seymour@nanoporetech.com>", "Jabari Holder <jholder@and.digital>", "ankandrew <61120139+ankandrew@users.noreply.github.com>"]
 edition = "2018"
 
 [lib]
-name = "fast_ctc_decode"
+name = "fast_ctc_decoder"
 crate-type = ["cdylib"]
 
 [dependencies]

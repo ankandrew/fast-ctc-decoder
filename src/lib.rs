@@ -616,7 +616,7 @@ fn crf_beam_search_duplex(
 /// actually used by any of the functions in this module, so the value does not matter.
 #[cfg(feature = "python")]
 #[pymodule]
-fn fast_ctc_decode(_py: Python, m: &PyModule) -> PyResult<()> {
+fn fast_ctc_decoder(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(beam_search))?;
     m.add_wrapped(wrap_pyfunction!(beam_search_duplex))?;
     m.add_wrapped(wrap_pyfunction!(viterbi_search))?;

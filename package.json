@@ -1,8 +1,8 @@
 {
-  "name": "@nanopore/fast-ctc-decode",
+  "name": "@nanopore/fast-ctc-decoder",
   "version": "0.3.7",
   "description": "Blitzing fast CTC decoding library.",
-  "main": "pkg/fast_ctc_decode.js",
+  "main": "pkg/fast_ctc_decoder.js",
   "license": "LICENSE.md",
   "scripts": {
     "build": "wasm-pack build --target web --release && node post-install.js",
@@ -15,10 +15,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/nanoporetech/fast-ctc-decode.git"
+    "url": "https://github.com/nanoporetech/fast-ctc-decoder.git"
   },
   "author": "Chris Seymour",
-  "homepage": "https://github.com/nanoporetech/fast-ctc-decode#readme",
+  "contributors": [
+    "ankandrew <61120139+ankandrew@users.noreply.github.com>"
+  ],
+  "homepage": "https://github.com/nanoporetech/fast-ctc-decoder#readme",
   "devDependencies": {
     "@babel/plugin-syntax-dynamic-import": "^7.8.3",
     "@babel/plugin-transform-runtime": "^7.15.8",

@@ -3,7 +3,7 @@ import time
 import numpy as np
 from itertools import groupby
 
-from fast_ctc_decode import beam_search, viterbi_search
+from fast_ctc_decoder import beam_search, viterbi_search
 
 def decode_ctc_greedy_py(predictions, labels, *args):
     """

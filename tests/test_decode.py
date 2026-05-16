@@ -2,7 +2,7 @@
 
 import numpy as np
 from unittest import TestCase, main
-from fast_ctc_decode import *
+from fast_ctc_decoder import *
 
 
 class Test1DBeamSearch(TestCase):

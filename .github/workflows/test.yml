@@ -1,4 +1,4 @@
-name: test-fast-ctc-decode
+name: test-fast-ctc-decoder
 
 on: [push]
 
