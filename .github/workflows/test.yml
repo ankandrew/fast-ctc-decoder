@@ -5,17 +5,14 @@ on: [push]
 jobs:
 
   test:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust toolchain
         run: make setup-rust
       - name: Rust unit tests
         run: make rust-test
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Python unit tests
@@ -25,22 +22,3 @@ jobs:
           python3 -m pip install maturin numpy
           maturin develop -F python 
           python3 tests/test_decode.py
-
-  test-windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Rust toolchain
-        run: rustup toolchain install --profile minimal
-      - name: Rust unit tests
-        run: cargo test --features=resolver
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.12'
-      - name: Python unit tests
-        run: |
-          python -m venv venv3
-          venv3\Scripts\Activate.ps1
-          python -m pip install maturin numpy
-          maturin develop -F python
-          python tests/test_decode.py

@@ -2,6 +2,10 @@
 name = "fast_ctc_decoder"
 version = "0.3.7"
 authors = ["Vlado Boza <bozavlado@gmail.com>", "Chris Seymour <chris.seymour@nanoporetech.com>", "Jabari Holder <jholder@and.digital>", "ankandrew <61120139+ankandrew@users.noreply.github.com>"]
+description = "Fast CTC decoding library."
+license = "MIT"
+repository = "https://github.com/ankandrew/fast-ctc-decoder"
+homepage = "https://github.com/ankandrew/fast-ctc-decoder"
 edition = "2018"
 
 [lib]

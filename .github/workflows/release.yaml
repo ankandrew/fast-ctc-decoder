@@ -1,0 +1,185 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  test:
+    name: Test (${{ matrix.os }})
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        if: runner.os != 'Windows'
+        run: make setup-rust
+
+      - name: Install Rust toolchain
+        if: runner.os == 'Windows'
+        run: rustup toolchain install --profile minimal
+
+      - name: Rust unit tests
+        run: cargo test
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Python unit tests
+        run: |
+          python -m pip install maturin numpy
+          maturin develop
+          python tests/test_decode.py
+
+  linux-x86-wheels:
+    name: Build Linux x86 wheels
+    needs: [release-please, test]
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    container: quay.io/pypa/manylinux_2_28
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build wheels
+        run: bash .github/workflows/build-wheels.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86-wheels
+          path: wheelhouse/*.whl
+
+  linux-aarch-wheels:
+    name: Build Linux aarch64 wheels
+    needs: [release-please, test]
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install QEMU
+        run: docker run --privileged --rm tonistiigi/binfmt --install arm64
+      - name: Build wheels
+        run: |
+          docker run --platform linux/arm64 --workdir /src -v "${PWD}:/src" quay.io/pypa/manylinux_2_28 /bin/bash .github/workflows/build-wheels.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-aarch-wheels
+          path: wheelhouse/*.whl
+
+  osx-wheels:
+    name: Build macOS wheels
+    needs: [release-please, test]
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11', '3.12', '3.13', '3.14']
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        run: make setup-rust
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Build wheels
+        run: |
+          python -m pip install maturin
+          rustup target add x86_64-apple-darwin
+          rustup target add aarch64-apple-darwin
+          maturin build --release --strip --target universal2-apple-darwin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: osx-${{ matrix.python-version }}-wheel
+          path: target/wheels/*.whl
+
+  windows-wheels:
+    name: Build Windows wheels
+    needs: [release-please, test]
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        run: rustup toolchain install --profile minimal
+      - uses: actions/setup-python@v5
+      - name: Build wheels
+        run: |
+          python -m pip install maturin
+          maturin build --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-wheels
+          path: target/wheels/*.whl
+
+  sdist:
+    name: Build sdist
+    needs: [release-please, test]
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        run: make setup-rust
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build sdist
+        run: |
+          python -m pip install maturin
+          maturin sdist --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  publish-to-pypi:
+    name: Publish to PyPI
+    needs:
+      - release-please
+      - linux-x86-wheels
+      - linux-aarch-wheels
+      - osx-wheels
+      - windows-wheels
+      - sdist
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/fast-ctc-decoder
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
