@@ -1,12 +1,12 @@
 # fast-ctc-decoder
 
-![test-fast-ctc-decoder](https://github.com/nanoporetech/fast-ctc-decoder/workflows/test-fast-ctc-decoder/badge.svg) [![PyPI version](https://badge.fury.io/py/fast-ctc-decoder.svg)](https://badge.fury.io/py/fast-ctc-decoder)
+![test-fast-ctc-decoder](https://github.com/ankandrew/fast-ctc-decoder/workflows/test-fast-ctc-decoder/badge.svg) [![PyPI version](https://badge.fury.io/py/fast-ctc-decoder.svg)](https://badge.fury.io/py/fast-ctc-decoder)
 
 Blitzing fast CTC decoding library.
 
-Note: compared to the original `fast-ctc-decode` project, this fork is renamed to
-`fast-ctc-decoder` and keeps only the Python/Rust extension build; the Node/WebAssembly
-build has been removed.
+> [!NOTE]  
+> Note: compared to the original `fast-ctc-decode` project, this fork is renamed to `fast-ctc-decoder` and keeps only
+> the Python/Rust extension build; the Node/WebAssembly build has been removed.
 
 ```
 $ pip install fast-ctc-decoder
@@ -31,13 +31,13 @@ $ pip install fast-ctc-decoder
 
 ## Benchmark
 
-| Implementation       | Time (s) | URL |
-| -------------------- | -------- | --- |
-| Viterbi (Rust)       |   0.0003 | [nanoporetech/fast-ctc-decoder](https://github.com/nanoporetech/fast-ctc-decoder.git) |
-| Viterbi (Python)     |   0.0022 |     |
-| Beam Search (Rust)   |   0.0033 | [nanoporetech/fast-ctc-decoder](https://github.com/nanoporetech/fast-ctc-decoder.git) |
-| Beam Search (C++)    |   0.1034 | [parlance/ctcdecode](https://github.com/parlance/ctcdecode) |
-| Beam Search (Python) |   3.3337 | [githubharald/CTCDecoder](https://github.com/githubharald/CTCDecoder) |
+| Implementation       | Time (s) | URL                                                                             |
+|----------------------|----------|---------------------------------------------------------------------------------|
+| Viterbi (Rust)       | 0.0003   | [ankandrew/fast-ctc-decoder](https://github.com/ankandrew/fast-ctc-decoder.git) |
+| Viterbi (Python)     | 0.0022   |                                                                                 |
+| Beam Search (Rust)   | 0.0033   | [ankandrew/fast-ctc-decoder](https://github.com/ankandrew/fast-ctc-decoder.git) |
+| Beam Search (C++)    | 0.1034   | [parlance/ctcdecode](https://github.com/parlance/ctcdecode)                     |
+| Beam Search (Python) | 3.3337   | [githubharald/CTCDecoder](https://github.com/githubharald/CTCDecoder)           |
 
 
 ## Developer Quickstart
@@ -45,7 +45,7 @@ $ pip install fast-ctc-decoder
 ### Python
 
 ```
-$ git clone https://github.com/nanoporetech/fast-ctc-decoder.git
+$ git clone https://github.com/ankandrew/fast-ctc-decoder.git
 $ cd fast-ctc-decoder
 $ pip install --user maturin
 $ make test
@@ -67,8 +67,8 @@ The 2D beam search is based on [@jordisr](https://github.com/jordisr) and [@ihh]
 (c) 2019 Oxford Nanopore Technologies Ltd.
 
 fast-ctc-decoder is distributed under the terms of the MIT License.  If a copy of the License
-was not distributed with this file, You can obtain one at https://github.com/nanoporetech/fast-ctc-decoder/
+was not distributed with this file, You can obtain one at https://github.com/ankandrew/fast-ctc-decoder/
 
-### Research Release
-
-Research releases are provided as technology demonstrators to provide early access to features or stimulate Community development of tools. Support for this software will be minimal and is only provided directly by the developers. Feature requests, improvements, and discussions are welcome and can be implemented by forking and pull requests. However much as we would like to rectify every issue and piece of feedback users may have, the developers may have limited resource for support of this software. Research releases may be unstable and subject to rapid iteration by Oxford Nanopore Technologies.
+This project is a fork of the original
+[nanoporetech/fast-ctc-decode](https://github.com/nanoporetech/fast-ctc-decode). This fork
+renames the package and removes the original Node/WebAssembly build.
