@@ -7,5 +7,3 @@ dist/
 target/
 .*.swp
 .DS_Store
-pkg/
-node_modules/

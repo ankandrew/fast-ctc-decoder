@@ -4,14 +4,16 @@
 
 Blitzing fast CTC decoding library.
 
+Note: compared to the original `fast-ctc-decode` project, this fork is renamed to
+`fast-ctc-decoder` and keeps only the Python/Rust extension build; the Node/WebAssembly
+build has been removed.
+
 ```
 $ pip install fast-ctc-decoder
-$ npm i @nanopore/fast-ctc-decoder
 ```
 
 ## Usage
 
-### Python
 ```python
 >>> from fast_ctc_decoder import beam_search, viterbi_search
 >>>
@@ -25,31 +27,6 @@ $ npm i @nanopore/fast-ctc-decoder
 >>> seq, path = beam_search(posteriors, alphabet, beam_size=5, beam_cut_threshold=0.1)
 >>> seq
 'ACACTCGCAGCGCGATACGACTGATCGAGATATACTCAGTGTACACAGT'
-```
-
-### Node / Web
-```js
-import init, { beam_search, viterbi_search } from 'fast-ctc';
-
-const floatArr = [0.0, 0.4, 0.6, 0.0, 0.3, 0.7, 0.3, 0.3, 0.4, 0.4, 0.3, 0.3, 0.4, 0.3, 0.3, 0.3, 0.3, 0.4, 0.1, 0.4, 0.5, 0.1, 0.5, 0.4, 0.8, 0.1, 0.1, 0.1, 0.1, 0.8];
-const alphabet = ["N","A","G"];
-const beamSize = 5;
-const beamCutThreshold = Number(0.0).toPrecision(2);
-const collapseRepeats = true;
-const shape = [10, 3];
-const string = false;
-const qBias = Number(0.0).toPrecision(2);
-const qScale = Number(1.0).toPrecision(2);
-
-// On web, note the base path will be your public folder
-init('fast_ctc_decoder_wasm_bg.wasm');
-
-const viterbisearch = await beam_search(floatArr, alphabet, string, qScale, qBias, collapseRepeats, shape);
-
-const beamsearch = await beam_search(floatArr, alphabet, beamSize, beamCutThreshold, collapseRepeats, shape);
-
-console.log(viterbisearch); // GGAG
-console.log(beamsearch); // GAGAG
 ```
 
 ## Benchmark
@@ -72,13 +49,6 @@ $ git clone https://github.com/nanoporetech/fast-ctc-decoder.git
 $ cd fast-ctc-decoder
 $ pip install --user maturin
 $ make test
-```
-
-### JavaScript / Node
-
-```
-npm i
-npm test
 ```
 
 Note: You'll need a recent [rust](https://www.rust-lang.org/tools/install) compiler on your path to build the project.

@@ -24,15 +24,6 @@ use {
     pyo3::wrap_pyfunction,
 };
 
-#[cfg(feature = "wasm")]
-extern crate serde_derive;
-#[cfg(feature = "wasm")]
-extern crate serde_json;
-#[cfg(feature = "wasm")]
-extern crate wasm_bindgen;
-#[cfg(feature = "wasm")]
-use {js_sys::Error, ndarray::ArrayView, serde_json::json, wasm_bindgen::prelude::*};
-
 #[derive(Clone, Copy, Debug)]
 pub enum SearchError {
     RanOutOfBeam,
@@ -56,88 +47,6 @@ impl fmt::Display for SearchError {
 }
 
 impl std::error::Error for SearchError {}
-
-// wasm
-#[cfg(feature = "wasm")]
-#[wasm_bindgen]
-pub fn js_beam_search(
-    network_output: &JsValue,
-    alphabet: &JsValue,
-    beam_size: usize,
-    beam_cut_threshold: f32,
-    collapse_repeats: bool,
-    shape: &JsValue,
-) -> Result<JsValue, JsValue> {
-    let shape: Vec<usize> = shape.into_serde().unwrap();
-    let alphabet: Vec<String> = alphabet.into_serde().unwrap();
-    let max_beam_cut = 1.0 / (alphabet.len() as f32);
-    let network_output: Vec<f32> = network_output.into_serde().unwrap();
-    let network_output = ArrayView::from_shape((shape[0], shape[1]), &network_output).unwrap();
-
-    if beam_size == 0 {
-        Error::new("beam_size cannot be 0");
-        return Ok(JsValue::from_str("Error"));
-    } else if beam_cut_threshold < -0.0 {
-        Error::new("beam_cut_threshold must be at least 0.0");
-        return Ok(JsValue::from_str("Error"));
-    } else if beam_cut_threshold >= max_beam_cut {
-        Error::new(&format!(
-            "beam_cut_threshold cannot be more than {}",
-            max_beam_cut.to_string()
-        ));
-        return Ok(JsValue::from_str("Error"));
-    } else {
-        let (seq, starts) = search::beam_search(
-            &network_output,
-            &alphabet,
-            beam_size,
-            beam_cut_threshold,
-            collapse_repeats,
-        )
-        .unwrap();
-
-        let beam = json!({ "seq": seq, "starts": starts }).to_string();
-        return Ok(JsValue::from_str(&beam));
-    }
-}
-
-#[cfg(feature = "wasm")]
-#[wasm_bindgen]
-pub fn js_viterbi_search(
-    network_output: &JsValue,
-    alphabet: &JsValue,
-    qstring: bool,
-    qscale: f32,
-    qbias: f32,
-    collapse_repeats: bool,
-    shape: &JsValue,
-) -> Result<JsValue, JsValue> {
-    let shape: Vec<usize> = shape.into_serde().unwrap();
-    let alphabet: Vec<String> = alphabet.into_serde().unwrap();
-    let network_output: Vec<f32> = network_output.into_serde().unwrap();
-    let network_output = ArrayView::from_shape((shape[0], shape[1]), &network_output).unwrap();
-
-    if alphabet.is_empty() {
-        Error::new("Empty alphabet given");
-        return Ok(JsValue::from_str("Error"));
-    } else if alphabet.len() != network_output.shape()[1] {
-        Error::new("alphabet size does not match probability matrix dimensions");
-        return Ok(JsValue::from_str("Error"));
-    } else {
-        let (seq, starts) = search::viterbi_search(
-            &network_output,
-            &alphabet,
-            qstring,
-            qscale,
-            qbias,
-            collapse_repeats,
-        )
-        .unwrap();
-
-        let beam = json!({ "seq": seq, "starts": starts }).to_string();
-        return Ok(JsValue::from_str(&beam));
-    }
-}
 
 /// Python
 #[cfg(feature = "python")]
