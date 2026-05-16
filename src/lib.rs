@@ -289,12 +289,8 @@ fn crf_beam_search(
 ///
 /// Returns:
 ///     list of tuple of (str, numpy.ndarray, float): for each surviving beam
-///         entry, the decoded sequence, the array of label end-times, and the
-///         real probability of that labelling under the model. Internally the
-///         search is done in log-space, so the probability is accurate even
-///         for sequences that would underflow naive multiplication; however,
-///         very long sequences (typically thousands of steps) can still result
-///         in `exp(log_prob)` underflowing to 0.0.
+///         entry, the decoded sequence, the array of label end-times, and a
+///         relative score (1.0 for the top candidate, fractions for the rest).
 #[cfg(feature = "python")]
 #[pyfunction(beam_size = "5", beam_cut_threshold = "0.0")]
 #[pyo3(text_signature = "(network_output, init_state, alphabet, beam_size, beam_cut_threshold)")]
@@ -416,17 +412,9 @@ fn beam_search(
 /// the highest-scoring labelling, it returns one entry per surviving beam
 /// candidate (up to `beam_size` of them, ordered best first).
 ///
-/// The third element of each tuple is the real probability of that labelling
-/// under the model — i.e. the sum of probabilities of all CTC paths that
-/// collapse to that labelling. The search is performed in log-space so the
-/// probability is accurate even for inputs where naive multiplication would
-/// underflow. The probabilities of the returned candidates are disjoint and
-/// always sum to ≤ 1.0 (the remaining mass is spread over labellings that
-/// were pruned by the beam).
-///
-/// Note: for very long inputs (typically thousands of timesteps) the real
-/// probability `exp(log_prob)` can still underflow `f32` to 0.0 even though
-/// the internal log-probability is finite.
+/// The scores are relative to the top candidate: the best one is 1.0, others
+/// are fractions of it. They are not full probabilities of each labelling
+/// (the search renormalises at every step to avoid underflow).
 ///
 /// Args:
 ///     See `beam_search` for the meaning of each argument.
@@ -434,8 +422,8 @@ fn beam_search(
 /// Returns:
 ///     list of tuple of (str, numpy.ndarray, float): for each surviving beam
 ///         entry, the decoded sequence, the array of final timepoints of each
-///         label (as indices into the outer axis of `network_output`), and the
-///         real probability of that labelling.
+///         label (as indices into the outer axis of `network_output`), and a
+///         relative score (1.0 for the top candidate, fractions for the rest).
 ///
 /// Raises:
 ///     PyValueError: The constraints on the arguments have not been met.
