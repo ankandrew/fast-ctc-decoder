@@ -1,6 +1,6 @@
 [package]
 name = "fast_ctc_decoder"
-version = "0.3.9"
+version = "0.3.10"
 authors = ["Vlado Boza <bozavlado@gmail.com>", "Chris Seymour <chris.seymour@nanoporetech.com>", "Jabari Holder <jholder@and.digital>", "ankandrew <61120139+ankandrew@users.noreply.github.com>"]
 description = "Fast CTC decoding library."
 license = "MIT"

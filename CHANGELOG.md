@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.10](https://github.com/ankandrew/fast-ctc-decoder/compare/v0.3.9...v0.3.10) (2026-05-16)
+
+
+### Bug Fixes
+
+* .gitignore .idea folder ([b2e47d7](https://github.com/ankandrew/fast-ctc-decoder/commit/b2e47d7a8cea80e40e21fcefbaae20c0a3f93b5b))
+* add .editorconfig for standardization ([06051fb](https://github.com/ankandrew/fast-ctc-decoder/commit/06051fbdc44f7c30251b576cd6b188fc9212cdbf))
+* use uv for pip install, use `PyO3/maturin-action` and `Swatinem/rust-cache` ([2034c45](https://github.com/ankandrew/fast-ctc-decoder/commit/2034c45a9783d5fbc12bf9260441467fd23d61d5))
+
 ## [0.3.9](https://github.com/ankandrew/fast-ctc-decoder/compare/v0.3.8...v0.3.9) (2026-05-16)
 
 
